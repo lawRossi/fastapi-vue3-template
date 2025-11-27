@@ -1,0 +1,136 @@
+name: Backend CI
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'backend/**'
+      - '.github/workflows/backend-ci.yml'
+  pull_request:
+    branches: [ main, develop ]
+    paths:
+      - 'backend/**'
+      - '.github/workflows/backend-ci.yml'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.12"]
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    - name: Install Poetry
+      uses: snok/install-poetry@v1
+      with:
+        version: latest
+        virtualenvs-create: true
+        virtualenvs-in-project: true
+
+    - name: Cache dependencies
+      uses: actions/cache@v4
+      with:
+        path: .venv
+        key: ${{ runner.os }}-poetry-${{ matrix.python-version }}-${{ hashFiles('backend/pyproject.toml') }}
+
+    - name: Install backend dependencies
+      working-directory: ./backend
+      run: poetry install --with dev
+
+    - name: Run Ruff linter
+      working-directory: ./backend
+      run: |
+        ruff check .
+
+    - name: Run Ruff formatter check
+      working-directory: ./backend
+      run: |
+        ruff format --check .
+
+    - name: Type check with mypy
+      working-directory: ./backend
+      run: |
+        mypy . --ignore-missing-imports
+      continue-on-error: true
+
+    - name: Run database migrations
+      working-directory: ./backend
+      env:
+        DATABASE_URL: sqlite:///./test.db
+        DATABASE_URL_SYNC: sqlite:///./test.db
+        PYTHONPATH: ${{ github.workspace }}/backend
+      run: |
+        poetry run alembic upgrade head
+
+    - name: Run tests
+      working-directory: ./backend
+      env:
+        DATABASE_URL: sqlite:///./test.db
+        DATABASE_URL_SYNC: sqlite:///./test.db
+        PYTHONPATH: ${{ github.workspace }}/backend
+      run: |
+        poetry run pytest app/tests/ -v --cov=app --cov-report=xml
+
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v4
+      with:
+        file: ./backend/coverage.xml
+        flags: backend
+        name: backend-coverage
+
+  build:
+    runs-on: ubuntu-latest
+    needs: test
+    
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Build backend Docker image
+      working-directory: ./backend
+      run: |
+        docker build -t backend:latest .
+
+  security:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: "3.12"
+
+    - name: Install Poetry
+      uses: snok/install-poetry@v1
+      with:
+        version: latest
+
+    - name: Install dependencies
+      working-directory: ./backend
+      run: poetry install --with dev
+
+    - name: Run safety check
+      working-directory: ./backend
+      run: |
+        poetry run safety check
+
+    - name: Run bandit security linter
+      working-directory: ./backend
+      run: |
+        poetry run bandit -r app/ -f json -o bandit-report.json || true
+
+    - name: Upload security artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: security-reports
+        path: backend/bandit-report.json

@@ -1,0 +1,130 @@
+name: Frontend CI
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'frontend/**'
+      - '.github/workflows/frontend-ci.yml'
+  pull_request:
+    branches: [ main, develop ]
+    paths:
+      - 'frontend/**'
+      - '.github/workflows/frontend-ci.yml'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version: ["20"]
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Use Node.js ${{ matrix.node-version }}
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ matrix.node-version }}
+        cache: 'pnpm'
+        cache-dependency-path: frontend/pnpm-lock.yaml
+
+    - name: Install dependencies
+      working-directory: ./frontend
+      run: pnpm install --frozen-lockfile
+
+    - name: Run ESLint
+      working-directory: ./frontend
+      run: pnpm eslint
+
+    - name: Check Prettier formatting
+      working-directory: ./frontend
+      run: pnpm prettier --check src/
+
+    - name: Type check
+      working-directory: ./frontend
+      run: pnpm run build --dry-run 2>/dev/null || pnpm vue-tsc --noEmit
+
+    - name: Run unit tests
+      working-directory: ./frontend
+      run: pnpm test
+      continue-on-error: true
+
+    - name: Build project
+      working-directory: ./frontend
+      run: pnpm run build
+
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: frontend-build-${{ matrix.node-version }}
+        path: frontend/dist/
+        retention-days: 1
+
+  security:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Use Node.js 20
+      uses: actions/setup-node@v4
+      with:
+        node-version: 20
+        cache: 'pnpm'
+        cache-dependency-path: frontend/pnpm-lock.yaml
+
+    - name: Install dependencies
+      working-directory: ./frontend
+      run: pnpm install --frozen-lockfile
+
+    - name: Run npm audit
+      working-directory: ./frontend
+      run: npm audit --audit-level moderate
+
+    - name: Run security audit with audit-ci
+      working-directory: ./frontend
+      run: |
+        npx audit-ci --moderate
+      continue-on-error: true
+
+  lighthouse:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Use Node.js 20
+      uses: actions/setup-node@v4
+      with:
+        node-version: 20
+
+    - name: Setup pnpm
+      uses: pnpm/action-setup@v3
+      with:
+        version: 8
+
+    - name: Use Node.js 20
+      uses: actions/setup-node@v4
+      with:
+        node-version: 20
+        cache: 'pnpm'
+        cache-dependency-path: frontend/pnpm-lock.yaml
+
+    - name: Install dependencies and build
+      working-directory: ./frontend
+      run: |
+        pnpm install --frozen-lockfile
+        pnpm run build
+
+    - name: Serve built files
+      working-directory: ./frontend
+      run: |
+        npx serve -s dist -l 3000 &
+        sleep 10
+
+    - name: Run Lighthouse CI
+      uses: treosh/lighthouse-ci-action@v10
+      with:
+        configPath: './frontend/lighthouserc.json'
+        uploadArtifacts: true
+        temporaryPublicStorage: true

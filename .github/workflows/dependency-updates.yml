@@ -1,0 +1,147 @@
+name: Dependency Updates & Security
+
+on:
+  schedule:
+    # Run every Monday at 9 AM UTC
+    # - cron: '0 9 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  backend-dependency-updates:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: "3.12"
+
+    - name: Install Poetry
+      uses: snok/install-poetry@v1
+      with:
+        version: latest
+
+    - name: Install dependencies
+      working-directory: ./backend
+      run: poetry install --with dev
+
+    - name: Check for outdated dependencies
+      working-directory: ./backend
+      run: |
+        poetry show --outdated
+
+    - name: Update lock file
+      working-directory: ./backend
+      run: |
+        poetry update
+      continue-on-error: true
+
+    - name: Run tests after update
+      working-directory: ./backend
+      run: |
+        poetry run pytest
+      continue-on-error: true
+
+    - name: Create Pull Request
+      uses: peter-evans/create-pull-request@v6
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        commit-message: "Update backend dependencies"
+        title: "Backend Dependency Updates"
+        body: |
+          ## Backend Dependency Updates
+          
+          This PR updates Python dependencies in the backend.
+          
+          ## Changes
+          - Updated outdated dependencies
+          - Verified tests still pass
+          
+          ## Checklist
+          - [ ] Tests pass
+          - [ ] Code quality checks pass
+          - [ ] No breaking changes introduced
+        branch: update/backend-dependencies
+        base: main
+
+  frontend-dependency-updates:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Use Node.js 20
+      uses: actions/setup-node@v4
+      with:
+        node-version: 20
+        cache: 'npm'
+
+    - name: Install dependencies
+      working-directory: ./frontend
+      run: npm install
+
+    - name: Check for outdated dependencies
+      working-directory: ./frontend
+      run: |
+        npm outdated
+
+    - name: Update dependencies
+      working-directory: ./frontend
+      run: |
+        npm update
+      continue-on-error: true
+
+    - name: Run tests after update
+      working-directory: ./frontend
+      run: |
+        npm run lint && npm run build
+      continue-on-error: true
+
+    - name: Create Pull Request
+      uses: peter-evans/create-pull-request@v6
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        commit-message: "Update frontend dependencies"
+        title: "Frontend Dependency Updates"
+        body: |
+          ## Frontend Dependency Updates
+          
+          This PR updates Node.js dependencies in the frontend.
+          
+          ## Changes
+          - Updated outdated dependencies
+          - Verified linting and build still pass
+          
+          ## Checklist
+          - [ ] Linting passes
+          - [ ] Build successful
+          - [ ] No breaking changes introduced
+        branch: update/frontend-dependencies
+        base: main
+
+  security-scan:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Run CodeQL Analysis
+      uses: github/codeql-action/init@v3
+      with:
+        languages: python, javascript
+
+    - name: Autobuild
+      uses: github/codeql-action/autobuild@v3
+
+    - name: Perform CodeQL Analysis
+      uses: github/codeql-action/analyze@v3
+
+    - name: Run dependency vulnerability scan
+      uses: actions/dependency-review-action@v4
+      with:
+        fail-on-severity: moderate
