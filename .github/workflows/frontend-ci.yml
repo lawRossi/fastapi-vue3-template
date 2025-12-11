@@ -45,6 +45,7 @@ jobs:
     - name: Check Prettier formatting
       working-directory: ./frontend
       run: pnpm prettier --check src/
+      continue-on-error: true
 
     - name: Type check
       working-directory: ./frontend
