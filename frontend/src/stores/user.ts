@@ -207,6 +207,7 @@ export const useUserStore = defineStore('user', () => {
     } else {
       userId.value = null
       token.value = null
+      userInfo.value = null
       localStorage.removeItem('token')
       isLoggedIn.value = false
     }
@@ -224,6 +225,7 @@ export const useUserStore = defineStore('user', () => {
       // 清理本地状态
       userId.value = null
       token.value = null
+      userInfo.value = null
       isLoggedIn.value = false
       localStorage.removeItem('token')
       router.push('/')

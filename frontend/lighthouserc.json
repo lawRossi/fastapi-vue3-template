@@ -2,7 +2,7 @@
   "ci": {
     "collect": {
       "url": [
-        "http://localhost:3000/auth"
+        "http://localhost:3000/summary"
       ],
       "numberOfRuns": 3
     },
