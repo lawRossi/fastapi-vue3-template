@@ -63,8 +63,6 @@ jobs:
     - name: Run tests
       working-directory: ./backend
       env:
-        DATABASE_URL: sqlite:///./test.db
-        DATABASE_URL_SYNC: sqlite:///./test.db
         PYTHONPATH: ${{ github.workspace }}/backend
       run: |
         poetry run pytest app/tests/ -v --cov=app --cov-report=xml
